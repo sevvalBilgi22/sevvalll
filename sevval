@@ -1,0 +1,183 @@
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Drawing;
+using System.Linq;
+using System.Threading.Tasks;
+using System;
+using System.IO;
+using System.Security.Cryptography;
+using System.Text;
+using System.Windows.Forms;
+namespace task_2_
+{ public partial class Form1 : Form {
+        public Form1() { InitializeComponent(); }
+        /*GETTING DEFAULT VALUES*/
+        private void Form1_Load(object sender, EventArgs e) {// GETTING DEFAULT VALUES WHICH IS NOT IMPORTANT
+            cmbMode.SelectedIndex = 0; // ECB
+            cmbKeyLength.SelectedIndex = 0; // 128
+            cmbOperation.SelectedIndex = 0; // Encrypt
+                                            }
+        private void btnEncryptDecrypt_Click(object sender, EventArgs e){ //BUTTON ENCRYPT/DECRYPT
+            try {
+                string key = txtKey.Text.Trim();//GETTING OUR KEY
+                if (string.IsNullOrEmpty(key)){
+                    MessageBox.Show("Please enter a secret key", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;}
+                string inputText = txtInput.Text.Trim();
+                if (string.IsNullOrEmpty(inputText)) //GETTING OUR PLAINTEXT
+                {
+                    MessageBox.Show("Please enter text to encrypt/decrypt", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                string operation = cmbOperation.SelectedItem.ToString();
+                string mode = cmbMode.SelectedItem.ToString();
+                int keyLength = int.Parse(cmbKeyLength.SelectedItem.ToString()); //KEY'S LENGHTH??
+                string result = "";
+                if (operation == "Encrypt") // IF PICKED VALUE IS ENCRYPTING...
+                {
+                    result = EncryptText(inputText, key, mode, keyLength);
+                    txtOutput.Text = result;
+                }
+                else // IF PICKED VALUE IS DECRYPTION...
+                {
+                    result = DecryptText(inputText, key, mode, keyLength);
+                    txtOutput.Text = result;
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error: {ex.Message}", "Operation Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+        private string EncryptText(string plainText, string password, string mode, int keySize) //ENCRYPTION
+        {
+            byte[] plainBytes = Encoding.UTF8.GetBytes(plainText);
+            byte[] keyBytes = GetValidKey(password, keySize);
+            byte[] iv = null;
+            using (Aes aes = Aes.Create())
+            {
+                aes.KeySize = keySize;
+                aes.BlockSize = 128;
+                aes.Key = keyBytes;
+                aes.Mode = GetCipherMode(mode);
+                if (mode == "CBC" || mode == "CFB") // For CBC and CFB modes, generate and use IV??
+                {
+                    aes.GenerateIV(); //IV (Initialization Vector) : Random data used for CBC and CFB modes
+                    iv = aes.IV; //Without IV, same plaintext + same key = same ciphertext (pattern visible)
+                }
+                else if (mode == "ECB")
+                {
+                    aes.IV = new byte[16]; // ECB doesn't use IV, but we need to set something
+                }
+                using (var encryptor = aes.CreateEncryptor())
+                using (var ms = new MemoryStream())
+                { // Write IV at the beginning for CBC and CFB modes
+                    if (iv != null)
+                    {
+                        ms.Write(iv, 0, iv.Length);
+                    }
+                    using (var cs = new CryptoStream(ms, encryptor, CryptoStreamMode.Write))
+                    {
+                        cs.Write(plainBytes, 0, plainBytes.Length);
+                        cs.FlushFinalBlock();
+                    }
+                    byte[] cipherBytes = ms.ToArray();
+                    return Convert.ToBase64String(cipherBytes);
+                }
+            }
+        }
+        private string DecryptText(string cipherText, string password, string mode, int keySize) //DECRYPTION
+        {
+            byte[] cipherBytes = Convert.FromBase64String(cipherText);
+            byte[] keyBytes = GetValidKey(password, keySize);
+            byte[] iv = null;
+            using (Aes aes = Aes.Create())
+            {
+                aes.KeySize = keySize;
+                aes.BlockSize = 128;
+                aes.Key = keyBytes;
+                aes.Mode = GetCipherMode(mode); // Extract IV if present (for CBC and CFB modes)
+                if (mode == "CBC" || mode == "CFB")
+                {
+                    iv = new byte[16];
+                    Array.Copy(cipherBytes, 0, iv, 0, 16);
+                    aes.IV = iv; // Remove IV from ciphertext
+                    byte[] actualCipher = new byte[cipherBytes.Length - 16];
+                    Array.Copy(cipherBytes, 16, actualCipher, 0, actualCipher.Length);
+                    cipherBytes = actualCipher;
+                }
+                else if (mode == "ECB")
+                {
+                    aes.IV = new byte[16];
+                }
+                using (var decryptor = aes.CreateDecryptor())
+                using (var ms = new MemoryStream(cipherBytes))
+                using (var cs = new CryptoStream(ms, decryptor, CryptoStreamMode.Read))
+                using (var sr = new StreamReader(cs))
+                {
+                    return sr.ReadToEnd();
+                }
+            }
+        }
+        private byte[] GetValidKey(string password, int keySize) //GETTING KEY
+        { // Convert the password to a valid key using SHA256
+            int keySizeInBytes = keySize / 8;
+            byte[] passwordBytes = Encoding.UTF8.GetBytes(password);
+            using (SHA256 sha256 = SHA256.Create())
+            {
+                byte[] hash = sha256.ComputeHash(passwordBytes);
+                byte[] key = new byte[keySizeInBytes];
+                Array.Copy(hash, key, keySizeInBytes);
+                return key;
+            }
+        }
+        private CipherMode GetCipherMode(string mode) //PICKING THE MODE
+        {
+            switch (mode)
+            {
+                case "ECB": return CipherMode.ECB;//Each block is encrypted independently. Simple but insecure for patterns.
+                case "CBC": return CipherMode.CBC; // Each block is XORed with previous ciphertext before encryption. Requires IV.
+                case "CFB": return CipherMode.CFB;//Turns block cipher into stream cipher. Requires IV.
+                default: return CipherMode.CBC;
+            }
+        }
+        /*SAVING THE FORM */
+        private void btnSaveToFile_Click(object sender, EventArgs e) //SAVE FILE
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(txtOutput.Text))
+                {
+                    MessageBox.Show("No data to save", "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                SaveFileDialog saveFileDialog = new SaveFileDialog();
+                saveFileDialog.Filter = "Text files (*.txt)|*.txt";
+                saveFileDialog.DefaultExt = "txt";
+                if (saveFileDialog.ShowDialog() == DialogResult.OK)
+                {
+                    File.WriteAllText(saveFileDialog.FileName, txtOutput.Text);
+                    MessageBox.Show($"File saved successfully to: {saveFileDialog.FileName}", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+            }
+            catch (Exception ex) {
+                MessageBox.Show($"Error saving file: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            } }
+        /*LOADING FROM THE FILE*/
+        private void btnLoadFromFile_Click(object sender, EventArgs e) { //LOAD FROM FILE
+            try {
+                OpenFileDialog openFileDialog = new OpenFileDialog();
+                openFileDialog.Filter = "Text files (*.txt)|*.txt";
+                if (openFileDialog.ShowDialog() == DialogResult.OK) {
+                    string content = File.ReadAllText(openFileDialog.FileName);
+                    txtInput.Text = content; } }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error loading file: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }}
+        /*CLANING THE FORM*/
+        private void btnClear_Click(object sender, EventArgs e){ //CLEANING BUTTON
+            txtInput.Clear();
+            txtOutput.Clear();
+            txtKey.Clear();   }}}
