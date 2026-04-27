@@ -1,0 +1,65 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using System.IO;
+using System.Security.Cryptography;
+using System.Text;
+
+namespace task3
+{
+     class Program
+    {
+        static void Main(string[] args)
+        {
+            try
+            {
+                // 1. Initialize RSA with a 2048-bit key size
+                using (RSACryptoServiceProvider rsa = new RSACryptoServiceProvider(2048))
+                {
+                    Console.WriteLine("RSA Encryption & Decryption System");
+
+                    // Input: User enters the text to be encrypted
+                    Console.Write("Enter the plaintext to encrypt: ");
+                    string originalText = Console.ReadLine();
+
+                    // 2. Encryption Process
+                    // Convert string to byte array
+                    byte[] dataToEncrypt = Encoding.UTF8.GetBytes(originalText);
+                    // Encrypt using the Public Key
+                    byte[] encryptedData = rsa.Encrypt(dataToEncrypt, false);
+                    // Convert to Base64 string for easy storage/display
+                    string encryptedString = Convert.ToBase64String(encryptedData);
+
+                    Console.WriteLine("\n[1] Encrypted Text (Base64):");
+                    Console.WriteLine(encryptedString);
+
+                    // 3. Storage: Saving to a file system
+                    string fileName = "cipher_storage.txt";
+                    File.WriteAllText(fileName, encryptedString);
+                    Console.WriteLine($"\n[2] Encrypted text saved to '{fileName}'");
+
+                    // 4. Reading: Read from the file system
+                    Console.WriteLine("\n[3] Reading file for decryption...");
+                    string textFromFile = File.ReadAllText(fileName);
+                    byte[] dataToDecrypt = Convert.FromBase64String(textFromFile);
+
+                    // 5. Decryption Process
+                    // Decrypt using the Private Key (stored within the rsa object)
+                    byte[] decryptedData = rsa.Decrypt(dataToDecrypt, false);
+                    string decryptedText = Encoding.UTF8.GetString(decryptedData);
+
+                    Console.WriteLine("\n[4] Decrypted Original Message:");
+                    Console.WriteLine(decryptedText);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("An error occurred: " + ex.Message);
+            }
+
+            Console.WriteLine("\nPress any key to exit...");
+            Console.ReadKey();
+        }
+    }
+}
